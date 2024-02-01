@@ -7,12 +7,11 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-honcho-ai = "^0.0.0.dev1"
 py-cord = "^2.4.1"
 python-dotenv = "^1.0.0"
 langchain-core = "^0.1.12"
 langchain-openai = "^0.0.2.post1"
-
+honcho-ai = {path = "../../honcho/sdk"}
 
 [build-system]
 requires = ["poetry-core"]

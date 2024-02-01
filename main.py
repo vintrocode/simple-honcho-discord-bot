@@ -1,27 +1,26 @@
 import os
-
-from typing import List
-
+from uuid import uuid4
 import discord
 from dotenv import load_dotenv
+from typing import List
 
-load_dotenv()
-
-from honcho import Client as HonchoClient
-from honcho import LRUCache
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import AIMessage, HumanMessage
+
+from honcho import Client as HonchoClient
+
+load_dotenv()
 
 
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 
-CACHE = LRUCache(50) # Support 50 concurrent active conversations cached in memory 
+app_id = str(uuid4())
 
-honcho = HonchoClient("http://localhost:8000")
+honcho = HonchoClient(app_id=app_id)
 
 bot = discord.Bot(intents=intents)
 
@@ -44,15 +43,6 @@ def langchain_message_converter(messages: List):
             new_messages.append(AIMessage(content=message["content"]))
     return new_messages
 
-def get_or_create(user_id, location_id) -> int:
-    key = f"{user_id}+{location_id}"
-    session_id = CACHE.get(key)
-    if session_id is None:
-        session = honcho.create_session(user_id, location_id)
-        print(session)
-        session_id = session["id"]
-        CACHE.put(key, session_id)
-    return session_id
 
 @bot.event
 async def on_ready():
@@ -66,33 +56,34 @@ async def on_message(message):
     user_id = f"discord_{str(message.author.id)}"
     location_id=str(message.channel.id)
 
-    session_id = get_or_create(user_id, location_id)
+    sessions = honcho.get_sessions(user_id, location_id)
+    if len(sessions) > 0:
+        session = sessions[0]
+    else:
+        session = honcho.create_session(user_id, location_id)
 
-    history = honcho.get_messages_for_session(user_id, session_id)
+    print(session)
+
+    history = session.get_messages()
     chat_history = langchain_message_converter(history)
 
     inp = message.content
-    honcho.create_message_for_session(user_id, session_id, True, inp)
+    session.create_message(is_user=True, content=inp)
+
     async with message.channel.typing():
         response = await chain.ainvoke({"chat_history": chat_history, "input": inp})
         await message.channel.send(response)
 
-    honcho.create_message_for_session(user_id, session_id, False, inp)
+    session.create_message(is_user=False, content=response)
 
 @bot.slash_command(name = "restart", description = "Restart the Conversation")
 async def restart(ctx):
     user_id=f"discord_{str(ctx.author.id)}"
     location_id=str(ctx.channel_id)
-    key = f"{user_id}+{location_id}"
-    session_id = CACHE.get(key)
-    if session_id is not None:
-        honcho.delete_session(user_id, session_id)
-    session = honcho.create_session(user_id, location_id)
-    session_id = session["id"]
-    CACHE.put(key, session_id)
+    sessions = honcho.get_sessions(user_id, location_id)
+    sessions[0].delete() if len(sessions) > 0 else None
 
     msg = "Great! The conversation has been restarted. What would you like to talk about?"
-    honcho.create_message_for_session(user_id, session_id, False, msg)
     await ctx.respond(msg)
 
 bot.run(os.environ["BOT_TOKEN"])
