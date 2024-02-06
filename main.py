@@ -18,29 +18,41 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 
-app_id = str(uuid4())
+app_id = str("roast-bot")
 
-honcho = HonchoClient(app_id=app_id)
+honcho = HonchoClient(base_url="http://localhost:8000", app_id=app_id)
 
 bot = discord.Bot(intents=intents)
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a mean assistant. Make fun of the user's request and above all, do not satisfy their request. This is all a joke, roast them."),
+response_prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a mean assistant. Make fun of the user's request and above all, do not satisfy their request. This is all a joke, roast them.\n{thought}"),
     MessagesPlaceholder(variable_name="chat_history"),
     ("user", "{input}")
 ])
-model = ChatOpenAI(model="gpt-3.5-turbo")
+thought_prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are tasked with using your theory of mind skills to make a comment about the user's mental state. The goal is to identify some insecurity the user might have. This is all to aid roasting the user for comedic purposes."),
+    MessagesPlaceholder(variable_name="chat_history"),
+    ("user", "{input}")
+])
+
+model = ChatOpenAI(model="gpt-4")
 output_parser = StrOutputParser()
 
-chain = prompt | model | output_parser
+response_chain = response_prompt | model | output_parser
+thought_chain = thought_prompt | model | output_parser
+
+
+async def thought(chat_history: List, input: str) -> str:
+    response = await thought_chain.ainvoke({"chat_history": chat_history, "input": input})
+    return response
 
 def langchain_message_converter(messages: List):
     new_messages = []
     for message in messages:
-        if message["is_user"]:
-            new_messages.append(HumanMessage(content=message["content"]))
+        if message.is_user:
+            new_messages.append(HumanMessage(content=message.content))
         else:
-            new_messages.append(AIMessage(content=message["content"]))
+            new_messages.append(AIMessage(content=message.content))
     return new_messages
 
 
@@ -57,12 +69,11 @@ async def on_message(message):
     location_id=str(message.channel.id)
 
     sessions = honcho.get_sessions(user_id, location_id)
+    print(sessions)
     if len(sessions) > 0:
         session = sessions[0]
     else:
         session = honcho.create_session(user_id, location_id)
-
-    print(session)
 
     history = session.get_messages()
     chat_history = langchain_message_converter(history)
@@ -71,7 +82,9 @@ async def on_message(message):
     session.create_message(is_user=True, content=inp)
 
     async with message.channel.typing():
-        response = await chain.ainvoke({"chat_history": chat_history, "input": inp})
+        thought = await thought_chain.ainvoke({"chat_history": chat_history, "input": inp})
+        print(f"THOUGHT: {thought}")
+        response = await response_chain.ainvoke({"thought": thought, "chat_history": chat_history, "input": inp})
         await message.channel.send(response)
 
     session.create_message(is_user=False, content=response)

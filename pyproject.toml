@@ -11,7 +11,7 @@ py-cord = "^2.4.1"
 python-dotenv = "^1.0.0"
 langchain-core = "^0.1.12"
 langchain-openai = "^0.0.2.post1"
-honcho-ai = {path = "../../honcho/sdk"}
+honcho-ai = {path = "../../honcho/sdk", develop = true}
 
 [build-system]
 requires = ["poetry-core"]
