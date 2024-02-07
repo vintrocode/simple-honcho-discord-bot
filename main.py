@@ -68,14 +68,14 @@ async def on_message(message):
     user_id = f"discord_{str(message.author.id)}"
     location_id=str(message.channel.id)
 
-    sessions = honcho.get_sessions(user_id, location_id)
-    print(sessions)
+    sessions = list(honcho.get_sessions_generator(user_id, location_id))
+
     if len(sessions) > 0:
         session = sessions[0]
     else:
         session = honcho.create_session(user_id, location_id)
 
-    history = session.get_messages()
+    history = list(session.get_messages_generator())
     chat_history = langchain_message_converter(history)
 
     inp = message.content
@@ -93,7 +93,7 @@ async def on_message(message):
 async def restart(ctx):
     user_id=f"discord_{str(ctx.author.id)}"
     location_id=str(ctx.channel_id)
-    sessions = honcho.get_sessions(user_id, location_id)
+    sessions = list(honcho.get_sessions_generator(user_id, location_id))
     sessions[0].delete() if len(sessions) > 0 else None
 
     msg = "Great! The conversation has been restarted. What would you like to talk about?"
